@@ -11,6 +11,19 @@ grep -qxF 'mkdir -p "$HF_HOME"' ~/.bashrc || echo 'mkdir -p "$HF_HOME"' >> ~/.ba
 grep -qxF 'export HF_ENDPOINT=https://hf-mirror.com' ~/.bashrc || echo 'export HF_ENDPOINT=https://hf-mirror.com' >> ~/.bashrc
 ```
 
+#### 共享盘 `~/fsas` 目录说明
+
+平台提供的共享存储根目录（`ls ~/fsas` 常见为）：
+
+| 目录 | 用途 |
+|------|------|
+| `datasets/` | 数据集、校准数据、可选 `HF_DATASETS_CACHE` |
+| `models/` | `HF_HOME` → `huggingface/` 模型权重缓存 |
+| `pip-cache/` | pip 缓存 |
+| `vlm/` | 多模态实验结果、日志（本仓库 bridge 实验见 `mystle/prompt/run_experiment.md` 中的路径约定） |
+
+详细子路径约定见 `mystle/prompt/run_experiment.md` 中「共享存储」一节。
+
 
 #### venv
 ```shell

@@ -1,5 +1,7 @@
 # Experiment Tracker
 
+- **数据与结果根目录**: 共享盘 `~/fsas` — 校准数据在 `datasets/deepseek-vl2-bridge/`，实验产出在 `vlm/deepseek-vl2-bridge/`（详见 `mystle/prompt/run_experiment.md`）。
+
 | Run ID | Milestone | Purpose | System / Variant | Split | Metrics | Priority | Status | Notes |
 |--------|-----------|---------|------------------|-------|---------|----------|--------|-------|
 | R001 | M0 | Bridge score computation | Bridge Score Module | 1k calibration | rank correlation, distribution | MUST | TODO | 3 calibration subsets |

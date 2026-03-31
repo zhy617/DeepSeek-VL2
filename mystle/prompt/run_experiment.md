@@ -24,6 +24,43 @@ AUTO_PROCEED: true — 不要在任何 checkpoint 停下来等我确认，自动
 - **pip 镜像**: 清华源（已配置）
 - **NumPy**: 1.26.4（已降级，兼容 torchvision）
 
+## 共享存储 `~/fsas`（数据集与实验结果）
+
+算力平台共享盘，**关机不丢**；数据集与实验产出放在此处，避免占满系统盘。
+
+实际顶层结构（`~/fsas` 下）：
+
+| 目录 | 用途 |
+|------|------|
+| `datasets/` | 数据集：校准样本、评测集缓存、HuggingFace `datasets` 库缓存等 |
+| `models/` | 模型权重缓存；`HF_HOME` 指向 `~/fsas/models/huggingface`（见 `mystle/README.md`） |
+| `pip-cache/` | pip 缓存，勿写入实验数据 |
+| `vlm/` | 多模态/VLM 相关实验产出：日志、JSON、图、中间检查点 |
+
+**本实验建议路径约定**（在以上目录下建子目录，避免与其它任务混放）：
+
+```
+~/fsas/datasets/deepseek-vl2-bridge/
+├── calibration/          # 1000 条校准样本及预处理
+└── hf_datasets_cache/    # 可选：export HF_DATASETS_CACHE=... 指向此处
+
+~/fsas/vlm/deepseek-vl2-bridge/
+├── results/              # 各 run 的 JSON、图
+├── logs/                 # nohup / tee 日志
+└── model_info.json       # Step 1 结构探测（或放在 results/ 下）
+```
+
+**环境变量（在 shell 或脚本开头设置）**：
+
+```bash
+export HF_HOME="${HF_HOME:-$HOME/fsas/models/huggingface}"
+export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$HOME/fsas/datasets/deepseek-vl2-bridge/hf_datasets_cache}"
+mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" "$HOME/fsas/datasets/deepseek-vl2-bridge/calibration" \
+  "$HOME/fsas/vlm/deepseek-vl2-bridge/results" "$HOME/fsas/vlm/deepseek-vl2-bridge/logs"
+```
+
+代码仓库内仍只放 **`mystle/experiments/`** 源码；**不要**把大体积数据或结果提交进 git。
+
 ## 目标模型（已验证可用）
 
 **DeepSeek-VL2-small** (`deepseek-ai/deepseek-vl2-small`)
@@ -71,9 +108,9 @@ mystle/
 
 需要创建的目录和文件：
 - `mystle/experiments/` — 实验代码（bridge_score.py, admissibility_merge.py, evaluate.py, baselines/）
-- `mystle/results/` — 实验结果输出
-- `mystle/calibration_data/` — 校准数据
-- `mystle/refine-logs/EXPERIMENT_RESULTS.md` — 最终结果汇总（实验完成后创建）
+- `~/fsas/datasets/deepseek-vl2-bridge/calibration/` — 校准数据（大文件，在共享盘）
+- `~/fsas/vlm/deepseek-vl2-bridge/` — 实验结果、日志（`results/`、`logs/` 子目录）
+- `mystle/refine-logs/EXPERIMENT_RESULTS.md` — 最终结果文字汇总（实验完成后创建，可引用 fsas 中的路径）
 
 ## 研究方法核心（必须精确实现）
 
@@ -134,9 +171,13 @@ vl_gpt = vl_gpt.cuda().eval()
    ```
    pip install scipy datasets matplotlib seaborn tqdm
    ```
-5. 创建必要目录:
+5. 创建必要目录（含共享盘上的数据与结果路径，见上文「共享存储」）:
    ```
-   mkdir -p mystle/experiments/baselines mystle/results mystle/calibration_data
+   mkdir -p mystle/experiments/baselines \
+     "$HOME/fsas/datasets/deepseek-vl2-bridge/calibration" \
+     "$HOME/fsas/datasets/deepseek-vl2-bridge/hf_datasets_cache" \
+     "$HOME/fsas/vlm/deepseek-vl2-bridge/results" \
+     "$HOME/fsas/vlm/deepseek-vl2-bridge/logs"
    ```
 
 ### Step 1: 模型结构探测
@@ -144,7 +185,7 @@ vl_gpt = vl_gpt.cuda().eval()
 1. 加载模型，打印所有 MoE 层信息
 2. 记录每层的 expert 数量、top-K 设置、MoE 层索引
 3. 确认能 hook 到 `DeepseekV2MoE` 层的 expert 输出
-4. 保存到 `mystle/results/model_info.json`
+4. 保存到 `~/fsas/vlm/deepseek-vl2-bridge/results/model_info.json`（或同目录下带时间戳子文件夹）
 
 ### Step 2: 校准数据准备
 
@@ -154,7 +195,7 @@ vl_gpt = vl_gpt.cuda().eval()
    - original: 正常图文对
    - visual_ablated: 图像替换为同尺寸空白/全零张量
    - mismatch: 图像替换为另一条样本的图像
-4. 保存到 `mystle/calibration_data/`
+4. 保存到 `~/fsas/datasets/deepseek-vl2-bridge/calibration/`
 
 ### Step 3: 实现 Bridge Score 计算
 
@@ -165,7 +206,7 @@ vl_gpt = vl_gpt.cuda().eval()
 4. 逐 expert 的 hidden state 差异计算
 5. Bridge score 和 modality affinity 计算
 6. 跨 3 个校准子集的 stability 分析
-7. JSON 结果输出 + 分布可视化（matplotlib/seaborn）
+7. JSON 结果输出 + 分布可视化（matplotlib/seaborn），默认写入 `~/fsas/vlm/deepseek-vl2-bridge/results/`
 8. 内存管理（batch 处理，及时 `torch.cuda.empty_cache()`）
 
 ### Step 4: 实现 HC-SMoE Baseline
@@ -181,7 +222,7 @@ vl_gpt = vl_gpt.cuda().eval()
 创建 `mystle/experiments/evaluate.py`：
 1. 支持 InfoVQA、OCRBench、MMMU、MMBench 的评测
 2. 使用 lmms-eval 框架或手写评测逻辑
-3. 输出 JSON 格式结果
+3. 输出 JSON 格式结果到 `~/fsas/vlm/deepseek-vl2-bridge/results/`
 4. 计算 accuracy / score retention (%)
 
 ### Step 6: 运行实验 (Block B0 — Sanity Check)
@@ -209,7 +250,7 @@ vl_gpt = vl_gpt.cuda().eval()
 
 ### Step 9: 结果收集与报告
 
-1. 所有结果保存到 `mystle/results/`
+1. 所有结果保存到 `~/fsas/vlm/deepseek-vl2-bridge/results/`（按 `run_id` 分子目录）
 2. 生成结果汇总表
 3. 更新 `mystle/refine-logs/EXPERIMENT_TRACKER.md` 状态
 4. 写 `mystle/refine-logs/EXPERIMENT_RESULTS.md` 汇总报告
@@ -225,9 +266,9 @@ vl_gpt = vl_gpt.cuda().eval()
 
 ## 实验管理
 
-- 日志文件: `mystle/results/<run_id>.log`
-- 结果文件: `mystle/results/<run_id>/`
-- 每个实验完成后立即更新 `mystle/refine-logs/EXPERIMENT_TRACKER.md`
+- 日志文件: `~/fsas/vlm/deepseek-vl2-bridge/logs/<run_id>.log`
+- 结果文件: `~/fsas/vlm/deepseek-vl2-bridge/results/<run_id>/`
+- 每个实验完成后立即更新 `mystle/refine-logs/EXPERIMENT_TRACKER.md`（Notes 中可写 fsas 路径）
 
 ## 遇到问题时的处理
 

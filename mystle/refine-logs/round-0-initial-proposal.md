@@ -5,7 +5,7 @@
 - **Bottom-line problem**: 现有 MoE expert merging 方法假设所有专家在同一比较空间中可合并，直接迁移到多模态 MoE 时导致跨模态能力（OCR、InfoVQA、复杂推理）严重退化
 - **Must-solve bottleneck**: 缺少对"哪些专家允许被合并"（merge admissibility）的判断，特别是缺少对跨模态桥接专家（bridge experts）的操作化定义和保护机制
 - **Non-goals**: 不做新的 merge 算子优化；不做模型预训练/架构设计；不做纯 router 修复
-- **Constraints**: 1x RTX 4090 48GB GPU（算力平台）；3-4 个月到投稿；目标 ICLR 2027 / ICML 2026
+- **Constraints**: 1x RTX 4090 48GB GPU（算力平台）；3-4 个月到投稿；目标 ICLR 2027 / ICML 2026；数据与结果放在共享盘 `~/fsas`（见当前 `mystle/prompt/run_experiment.md`）
 - **Success condition**: 在相同压缩率下，bridge-sensitive benchmark 上显著优于 role-agnostic merge，且该优势不能被 Router KD 解释
 
 ## Technical Gap

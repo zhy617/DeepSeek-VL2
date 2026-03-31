@@ -5,7 +5,7 @@
 - **Bottom-line problem**: MoE expert merging 假设所有专家可比；在多模态 MoE 中，这导致跨模态桥接路径被破坏，bridge-sensitive 任务（OCR、InfoVQA、复杂推理）严重退化
 - **Must-solve bottleneck**: 缺少对 bridge experts 的操作化定义和 merge admissibility 判断
 - **Non-goals**: 新 merge 算子；模型预训练/架构设计；纯 router 修复；通用因果发现
-- **Constraints**: 1x RTX 4090 48GB GPU（算力平台）；3-4 个月到投稿；目标 ICLR 2027
+- **Constraints**: 1x RTX 4090 48GB GPU（算力平台）；3-4 个月到投稿；目标 ICLR 2027；数据集与实验产出放在共享盘 `~/fsas`（数据集与 `vlm/` 结果目录，见 `mystle/prompt/run_experiment.md`）
 - **Success condition**: 在相同压缩率下，bridge-sensitive benchmark 上 >=2% 优于 role-agnostic merge，且该优势不能被 Router KD 或 random protection 解释
 
 ## Technical Gap

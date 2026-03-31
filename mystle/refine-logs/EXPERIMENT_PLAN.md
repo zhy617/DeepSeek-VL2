@@ -151,6 +151,15 @@
 - **Human evaluation**: 无需
 - **Biggest bottleneck**: Bridge score 计算的 GPU 显存管理（三种干预条件的 forward pass）
 
+## 存储与路径（共享盘 fsas）
+
+- **共享盘根目录**: `~/fsas`（关机不丢；与系统盘分离）
+- **顶层目录**: `datasets/`（数据）、`models/`（`HF_HOME` 模型缓存）、`pip-cache/`（pip）、`vlm/`（本类实验产出）
+- **本实验约定**（与 `mystle/prompt/run_experiment.md` 一致）:
+  - 校准数据与 HF datasets 缓存: `~/fsas/datasets/deepseek-vl2-bridge/`（含 `calibration/`、`hf_datasets_cache/`）
+  - 实验结果与日志: `~/fsas/vlm/deepseek-vl2-bridge/`（含 `results/`、`logs/`）
+- **仓库内**: 仅保留 `mystle/experiments/` 源码与 `mystle/refine-logs/` 文档；大文件不提交 git
+
 ## Risks and Mitigations
 
 - **Risk**: Bridge score 计算过程中 GPU OOM（三种条件 × 多层 hook 数据）
