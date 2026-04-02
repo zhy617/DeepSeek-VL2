@@ -29,7 +29,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
-from scipy.stats import spearmanr
+from scipy.stats import percentileofscore, spearmanr
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
@@ -112,6 +112,29 @@ def parse_args() -> argparse.Namespace:
         help="序列长度不一致时：strict=跳过；suffix=取末尾 min(S) 对齐（多模态下视觉 token 数可能随图像变化）",
     )
     p.add_argument("--skip-plots", action="store_true", help="不绘制图（无 matplotlib 时用）")
+    p.add_argument(
+        "--tau-disp",
+        type=float,
+        default=0.0,
+        help="写入 layer_bridge_summary.json：若 sigma_l>=该值则标记 sigma_l_ge_tau_disp（供 Step4 admissibility_merge）",
+    )
+    p.add_argument(
+        "--layer-summary-eps",
+        type=float,
+        default=1e-8,
+        help="层内 B_z 分母 ε（与文档中 ε 一致）",
+    )
+    p.add_argument(
+        "--layer-summary-only",
+        action="store_true",
+        help="仅从已有 bridge_score_results.json 计算 layer_bridge_summary.json，不加载模型、不重跑 forward",
+    )
+    p.add_argument(
+        "--bridge-results-json",
+        type=str,
+        default="",
+        help="与 --layer-summary-only 联用：bridge_score_results.json 路径；默认同目录写出 layer_bridge_summary.json",
+    )
     return p.parse_args()
 
 
@@ -398,6 +421,71 @@ def finalize_scores(
     return {"layers": layers_out, "stability_spearman": stability, "moe_layer_indices": moe_layer_indices}
 
 
+def compute_layer_bridge_summary(
+    finalized: Dict[str, Any],
+    tau_disp: float,
+    eps: float,
+) -> Dict[str, Any]:
+    """
+    由 pooled_all 计算每层 bar_B_l、sigma_l、B_z(e,l)，并标记 sigma_l_ge_tau_disp。
+    供 admissibility_merge.py 读取。
+    """
+    moe_ids = finalized.get("moe_layer_indices") or []
+    layers_summary: Dict[str, Any] = {}
+    for lid in moe_ids:
+        block = finalized["layers"][str(lid)]
+        pa = block["pooled_all"]
+        B = np.array(pa["B"], dtype=np.float64)
+        M = np.array(pa["M"], dtype=np.float64)
+        valid = np.isfinite(B)
+        if valid.sum() == 0:
+            bar_B = float("nan")
+            sigma_l = float("nan")
+            B_z = [float("nan")] * len(B)
+        else:
+            Bv = B[valid]
+            bar_B = float(Bv.mean())
+            sigma_l = float(Bv.std(ddof=0))
+            B_z_arr = (B - bar_B) / (sigma_l + eps)
+            B_z = [float(x) if np.isfinite(x) else float("nan") for x in B_z_arr]
+        layers_summary[str(lid)] = {
+            "layer_idx": int(lid),
+            "bar_B_l": bar_B,
+            "sigma_l": sigma_l,
+            "sigma_l_ge_tau_disp": bool(np.isfinite(sigma_l) and sigma_l >= tau_disp),
+            "n_experts": len(B),
+            "B": pa["B"],
+            "M": pa["M"],
+            "B_z": B_z,
+        }
+
+    # 层敏感度 S_l：|bar_B_l| 在所有 MoE 层上的分位（0~100 归一为 0~1），供 Layer-First 合并预算
+    abs_list: List[float] = []
+    for lid in moe_ids:
+        b = layers_summary[str(lid)]["bar_B_l"]
+        if np.isfinite(b):
+            abs_list.append(abs(float(b)))
+    for lid in moe_ids:
+        k = str(lid)
+        b = layers_summary[k]["bar_B_l"]
+        if len(abs_list) == 0 or not np.isfinite(b):
+            layers_summary[k]["S_l_sensitivity"] = float("nan")
+        else:
+            layers_summary[k]["S_l_sensitivity"] = float(
+                percentileofscore(abs_list, abs(float(b)), kind="rank") / 100.0
+            )
+
+    return {
+        "meta": {
+            "tau_disp": tau_disp,
+            "eps": eps,
+            "description": "bar_B_l、sigma_l 来自 pooled_all 的 B；B_z 为层内 z-score；S_l_sensitivity 为 |bar_B_l| 的层间分位",
+        },
+        "moe_layer_indices": [int(x) for x in moe_ids],
+        "layers": layers_summary,
+    }
+
+
 def plot_distributions(
     finalized: Dict[str, Any],
     out_dir: Path,
@@ -454,6 +542,23 @@ def main() -> None:
     args = parse_args()
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
+
+    if args.layer_summary_only:
+        if not args.bridge_results_json:
+            raise SystemExit("--layer-summary-only 需要 --bridge-results-json 指向已有 bridge_score_results.json")
+        src = Path(args.bridge_results_json).expanduser().resolve()
+        if not src.is_file():
+            raise FileNotFoundError(src)
+        with open(src, "r", encoding="utf-8") as f:
+            finalized = json.load(f)
+        layer_summary = compute_layer_bridge_summary(
+            finalized, tau_disp=args.tau_disp, eps=args.layer_summary_eps
+        )
+        out_path = src.parent / "layer_bridge_summary.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(layer_summary, f, ensure_ascii=False, indent=2)
+        logger.info("已从 %s 写出层汇总（离线）: %s", src, out_path)
+        return
 
     cal_dir = Path(args.calibration_dir).expanduser().resolve()
     manifest_path = cal_dir / "manifest.jsonl"
@@ -647,7 +752,15 @@ def main() -> None:
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(finalized, f, ensure_ascii=False, indent=2)
 
+    layer_summary = compute_layer_bridge_summary(
+        finalized, tau_disp=args.tau_disp, eps=args.layer_summary_eps
+    )
+    summary_path = out_dir / "layer_bridge_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(layer_summary, f, ensure_ascii=False, indent=2)
+
     logger.info("已写入 %s，图 %s", json_path, plot_paths)
+    logger.info("层汇总表（Step 3.9）: %s", summary_path)
 
 
 if __name__ == "__main__":
