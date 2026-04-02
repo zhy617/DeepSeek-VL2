@@ -197,6 +197,40 @@ def load_merge_plan(path: Path) -> Tuple[List[List[int]], Dict[str, Any]]:
     return data["groups"], data.get("meta", {})
 
 
+def _pair_ok_on_layer_row(
+    row: Dict[str, Any],
+    i: int,
+    j: int,
+    tau_z: Optional[float],
+    delta_affinity: float,
+    use_per_layer_tau_z: bool,
+    bz_quantile_for_cutoff: float,
+) -> bool:
+    """单层上 B_z / M 是否允许合并 (i,j)。"""
+    Bz = row.get("B_z", [])
+    M = row.get("M", [])
+    if i >= len(Bz) or j >= len(Bz):
+        return False
+    bzi, bzj = Bz[i], Bz[j]
+    if not np.isfinite(bzi) or not np.isfinite(bzj):
+        return False
+    if use_per_layer_tau_z:
+        arr = np.array([x for x in Bz if np.isfinite(x)], dtype=np.float64)
+        if arr.size == 0:
+            return False
+        cut = float(np.quantile(arr, bz_quantile_for_cutoff))
+        if not (bzi <= cut and bzj <= cut):
+            return False
+    else:
+        assert tau_z is not None
+        if not (bzi < tau_z and bzj < tau_z):
+            return False
+    if i < len(M) and j < len(M) and np.isfinite(M[i]) and np.isfinite(M[j]):
+        if abs(float(M[i]) - float(M[j])) >= delta_affinity:
+            return False
+    return True
+
+
 def pairwise_merge_admissible(
     i: int,
     j: int,
@@ -206,37 +240,38 @@ def pairwise_merge_admissible(
     delta_affinity: float,
     use_per_layer_tau_z: bool,
     bz_quantile_for_cutoff: float,
+    admissibility_scope: str = "all",
 ) -> bool:
     """
-    检查 (i,j) 是否在所有「高离散」层上满足 B_z 与 M 约束。
-    tau_z 若为 None，则每层用 B_z 的 bz_quantile_for_cutoff 分位数作 cutoff（小于等于该 cutoff 视为可合并）。
+    检查 (i,j) 是否在选定「高离散」层上满足 B_z 与 M 约束。
+    tau_z 若为 None，则每层用 B_z 的 bz_quantile_for_cutoff 分位数作 cutoff。
+
+    admissibility_scope:
+    - ``all``: 每个 σ_l ≥ τ_disp 的层都必须通过（跨层 AND，易过严）
+    - ``max_sigma_layer``: 仅在 σ_l 最大的那一层检查（与「关键高离散层」叙事一致，默认推荐）
     """
     layers = layer_summary.get("layers", {})
-    for _, row in layers.items():
+    high: List[Tuple[str, Dict[str, Any]]] = []
+    for k, row in layers.items():
         sigma_l = row.get("sigma_l")
         if sigma_l is None or not np.isfinite(sigma_l) or float(sigma_l) < tau_disp:
             continue
-        Bz = row.get("B_z", [])
-        M = row.get("M", [])
-        if i >= len(Bz) or j >= len(Bz):
+        high.append((str(k), row))
+
+    if not high:
+        return True
+
+    if admissibility_scope == "max_sigma_layer":
+        _, row = max(high, key=lambda t: float(t[1].get("sigma_l", 0.0)))
+        return _pair_ok_on_layer_row(
+            row, i, j, tau_z, delta_affinity, use_per_layer_tau_z, bz_quantile_for_cutoff
+        )
+
+    for _, row in high:
+        if not _pair_ok_on_layer_row(
+            row, i, j, tau_z, delta_affinity, use_per_layer_tau_z, bz_quantile_for_cutoff
+        ):
             return False
-        bzi, bzj = Bz[i], Bz[j]
-        if not np.isfinite(bzi) or not np.isfinite(bzj):
-            return False
-        if use_per_layer_tau_z:
-            arr = np.array([x for x in Bz if np.isfinite(x)], dtype=np.float64)
-            if arr.size == 0:
-                return False
-            cut = float(np.quantile(arr, bz_quantile_for_cutoff))
-            if not (bzi <= cut and bzj <= cut):
-                return False
-        else:
-            assert tau_z is not None
-            if not (bzi < tau_z and bzj < tau_z):
-                return False
-        if i < len(M) and j < len(M) and np.isfinite(M[i]) and np.isfinite(M[j]):
-            if abs(float(M[i]) - float(M[j])) >= delta_affinity:
-                return False
     return True
 
 
@@ -250,6 +285,7 @@ def constrained_distance_matrix(
     use_per_layer_tau_z: bool,
     bz_quantile_for_cutoff: float,
     forbidden_penalty: float,
+    admissibility_scope: str = "all",
 ) -> np.ndarray:
     """与 HC-SMoE 一致：余弦距离；不可合并对置为 forbidden_penalty。"""
     dist_cond = pdist(X, metric="cosine")
@@ -266,6 +302,7 @@ def constrained_distance_matrix(
                 delta_affinity,
                 use_per_layer_tau_z,
                 bz_quantile_for_cutoff,
+                admissibility_scope=admissibility_scope,
             )
             if not ok:
                 D[i, j] = D[j, i] = forbidden_penalty

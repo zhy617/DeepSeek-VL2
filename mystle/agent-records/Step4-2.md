@@ -62,3 +62,13 @@ python mystle/experiments/baselines/merge_baseline_runs.py -o \
 ### 下一步（如需）
 
 在 GPU 上跑 **`admissibility_merge.py`**（带 `--layer-bridge-summary` 指向上面的 `layer_bridge_summary.json`），或对 HC-SMoE 做 **完整合并 + `save_pretrained`** 时再单独开任务并控显存。
+
+---
+
+### 4. 已执行：Admissibility merge（Step4 下一步）
+
+- 脚本增加 **`--merge-plan-only`**；默认 **`--tau-disp auto_p75`**、**`--admissibility-scope max_sigma_layer`**（仅在 σ_l 最大的一层上做 B_z/M 门控，避免跨层 AND 导致距离矩阵全惩罚、聚类退化为单簇）。
+- 已写入共享盘：
+  - `~/fsas/vlm/deepseek-vl2-bridge/results/baselines/admissibility_keep_0p50/`（约束聚类 → 32 专家）
+  - `~/fsas/vlm/deepseek-vl2-bridge/results/baselines/admissibility_keep_0p25/`（强压缩下触发 `clustering_fallback`，划分等效 HC-SMoE 余弦聚类 → 16 专家，见 `meta.json`）
+  - 汇总：`~/fsas/vlm/deepseek-vl2-bridge/results/baselines/admissibility_all_compression.json`

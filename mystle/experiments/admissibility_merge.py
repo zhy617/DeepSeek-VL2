@@ -13,9 +13,11 @@ import json
 import os
 import sys
 import time
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
 import torch
 from transformers import AutoModelForCausalLM
 
@@ -26,6 +28,37 @@ if str(_EXPERIMENTS_DIR) not in sys.path:
     sys.path.insert(0, str(_EXPERIMENTS_DIR))
 
 import moe_merge_core as mmc
+
+
+def resolve_tau_disp(s: str, layer_summary: Dict[str, Any]) -> float:
+    """
+    τ_disp：仅当 σ_l ≥ τ_disp 时在该层启用 per-expert B_z/M 约束。
+    - `auto` / `auto_p50`：σ_l 的中位数
+    - `auto_p75`（默认）：σ_l 的 75% 分位，仅约 top 25% 离散层施加约束（与「高 σ_l 层」一致）
+    - `auto_p90`：更严，仅约 top 10% 层
+    `0` 会使几乎所有层同时施加约束，跨层 AND 常导致无可合并对、聚类退化为单簇。
+    """
+    t = s.strip().lower()
+    sigmas: list[float] = []
+    for row in layer_summary.get("layers", {}).values():
+        sl = row.get("sigma_l")
+        if sl is not None and np.isfinite(sl):
+            sigmas.append(float(sl))
+    arr = np.array(sigmas, dtype=np.float64) if sigmas else np.array([], dtype=np.float64)
+
+    if t in ("auto", "auto_p50"):
+        if arr.size == 0:
+            return 0.0
+        return float(np.median(arr))
+    if t == "auto_p75":
+        if arr.size == 0:
+            return 0.0
+        return float(np.quantile(arr, 0.75))
+    if t == "auto_p90":
+        if arr.size == 0:
+            return 0.0
+        return float(np.quantile(arr, 0.90))
+    return float(s)
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,9 +86,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--compression-keep", type=float, default=0.5)
     p.add_argument(
         "--tau-disp",
-        type=float,
-        default=0.0,
-        help="σ_l ≥ 该值时在该层启用 per-expert B_z / M 约束（与 bridge 脚本一致）",
+        type=str,
+        default="auto_p75",
+        help="σ_l ≥ 该值时启用 per-expert B_z/M；默认 auto_p75=σ_l 的 75%% 分位；另有 auto/auto_p50/auto_p90 或显式浮点",
     )
     p.add_argument(
         "--tau-z",
@@ -81,9 +114,21 @@ def parse_args() -> argparse.Namespace:
         default=1e6,
         help="不可合并对的距离惩罚（代替无穷大以便 squareform）",
     )
+    p.add_argument(
+        "--admissibility-scope",
+        type=str,
+        default="max_sigma_layer",
+        choices=("all", "max_sigma_layer"),
+        help="B_z/M 约束作用范围：all=所有 σ_l≥τ_disp 的层（AND）；max_sigma_layer=仅 σ_l 最大的一层",
+    )
     p.add_argument("--linkage", type=str, default="average", choices=("average", "complete", "single"))
     p.add_argument("--no-save-model", action="store_true")
     p.add_argument("--smoke-forward", action="store_true")
+    p.add_argument(
+        "--merge-plan-only",
+        action="store_true",
+        help="仅聚类并写 merge_plan.json / meta.json，不将合并写入模型（省显存，与 hcsmoe_merge 一致）",
+    )
     return p.parse_args()
 
 
@@ -102,6 +147,7 @@ def main() -> None:
             f"请指定 --layer-bridge-summary 指向 layer_bridge_summary.json（当前: {summary_path}）"
         )
     layer_summary = load_json(summary_path)
+    tau_disp = resolve_tau_disp(args.tau_disp, layer_summary)
 
     bridge_meta: Optional[Dict[str, Any]] = None
     if args.bridge_results:
@@ -145,17 +191,29 @@ def main() -> None:
         X,
         n_experts,
         layer_summary,
-        tau_disp=args.tau_disp,
+        tau_disp=tau_disp,
         tau_z=None if use_q else tau_z_val,
         delta_affinity=args.delta_affinity,
         use_per_layer_tau_z=use_q,
         bz_quantile_for_cutoff=args.bz_quantile_for_cutoff,
         forbidden_penalty=args.forbidden_penalty,
+        admissibility_scope=args.admissibility_scope,
     )
 
     groups = mmc.hierarchical_cluster_from_full_distance(
         D, n_clusters=target_n, linkage_method=args.linkage
     )
+    if len(groups) == 1 and target_n > 1 and n_experts > 1:
+        warnings.warn(
+            "约束距离下层次聚类退化为单簇（常见于 τ_disp 过小或禁并过多）；"
+            "回退为与 HC-SMoE 相同的无约束余弦层次聚类。",
+            UserWarning,
+            stacklevel=1,
+        )
+        groups = mmc.hierarchical_cluster_groups(X, n_clusters=target_n, linkage_method=args.linkage)
+        clustering_fallback = "unconstrained_cosine"
+    else:
+        clustering_fallback = None
 
     meta: Dict[str, Any] = {
         "method": "admissibility-gated-merge",
@@ -164,7 +222,9 @@ def main() -> None:
         "n_routed_old": n_old,
         "n_routed_new": len(groups),
         "compression_keep": args.compression_keep,
-        "tau_disp": args.tau_disp,
+        "tau_disp_arg": args.tau_disp,
+        "tau_disp": tau_disp,
+        "admissibility_scope": args.admissibility_scope,
         "tau_z": args.tau_z,
         "use_bz_quantile": use_q,
         "bz_quantile_for_cutoff": args.bz_quantile_for_cutoff,
@@ -174,8 +234,20 @@ def main() -> None:
     }
     if bridge_meta is not None:
         meta["bridge_score_meta_keys"] = list(bridge_meta.keys())
+    if clustering_fallback:
+        meta["clustering_fallback"] = clustering_fallback
 
     mmc.save_merge_plan(run_dir / "merge_plan.json", groups, meta)
+
+    with open(run_dir / "meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    if args.merge_plan_only:
+        del vl_gpt
+        torch.cuda.empty_cache()
+        print(f"merge-plan-only: n_routed {n_old} -> {len(groups)}. Output: {run_dir}")
+        return
+
     mmc.apply_global_merge_partition(lang, groups, device)
 
     if args.smoke_forward:
@@ -191,9 +263,6 @@ def main() -> None:
         vl_gpt.save_pretrained(str(save_path), safe_serialization=True)
         proc = DeepseekVLV2Processor.from_pretrained(args.model_path)
         proc.save_pretrained(str(save_path))
-
-    with open(run_dir / "meta.json", "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
 
     print(f"Done. n_routed {n_old} -> {len(groups)}. Output: {run_dir}")
 
