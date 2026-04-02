@@ -1,7 +1,7 @@
 # Experiment Plan
 
 **Problem**: 多模态 MoE expert merging 中 bridge experts 被误合并导致跨模态能力退化  
-**Method Thesis**: 通过模态错配干预发现 bridge experts 的交互效应，约束 merge admissibility  
+**Method Thesis**: 通过模态错配干预量化跨模态交互效应（Bridge score），以 **层优先、高离散层专家细化** 的 admissibility 约束 merge（见 `mystle/prompt/run_experiment.md` 实证与 Layer-First 门控）。  
 **Date**: 2026-03-26  
 **Target Model**: DeepSeek-VL2-small (MoE-MLLM)  
 **Model Status**: 已验证可在 RTX 4090 48GB 上以 bf16 加载和推理
@@ -27,18 +27,18 @@
 
 ### Block B0: Bridge Score Sanity Check
 
-- **Claim tested**: Bridge experts 可被稳定识别，且 bridge score 分布有意义
+- **Claim tested**: Bridge score **跨校准子集稳定**，且 **层间** \(\bar{B}_l\) 分层可解释（支撑 layer-first 门控）；**非**要求「全局高 B 子集」或「全体 B>0」
 - **Why this block exists**: 没有这个 sanity check，整条线没有定义基础
 - **Dataset/split/task**: 1000 条多模态校准样本（从 LLaVA-Bench + InfoVQA train 中采样）
 - **Compared systems**: N/A（分析性实验）
 - **Metrics**:
-  - Bridge score 分布可视化（是否有清晰的高/低分群）
-  - 跨 3 个不同校准子集的 rank correlation（目标 >= 0.8）
-  - 高 bridge score 专家在不同层的分布
-- **Setup details**: DeepSeek-VL2，3 种干预条件，routed-token zeroing 近似
-- **Success criterion**: 存在稳定的高 bridge score 专家子集，且 rank correlation >= 0.8
-- **Failure interpretation**: 若 bridge score 完全不稳定或无差异，当前 idea 需重新审视
-- **Table/figure target**: Figure 1: bridge score 分布图 + 层间分布 + 稳定性分析
+  - 每层 \(\bar{B}_l\)、层内 \(\sigma_l\)、全局 B 直方图与 **层×expert** 热力图
+  - 跨 3 个不同校准子集的 **Spearman**（目标 >= 0.8）
+  - **高 \(\sigma_l\) 层**上 expert 级 spread（与「多数层 \(\sigma_l\) 小」对照）
+- **Setup details**: DeepSeek-VL2，3 种干预条件，routed-token zeroing 近似；门控实现以 **层内 \(B_z\)** + \(\tau_{\mathrm{disp}}\) 为准（见 `run_experiment.md`）
+- **Success criterion**: 子集 Spearman >= 0.8 **且** 层间 \(\bar{B}_l\) 非退化（有明显层间差异）；与 VL2-small 实证一致时可声明「层间主导、少数层高离散」
+- **Failure interpretation**: 若 rank correlation < 0.8 或层间无结构，则增加校准量或检查干预；**不**因「全局 B 多为负」单独判失败
+- **Table/figure target**: Figure 1: 层均值 \(\bar{B}_l\) 曲线 / 表 + 热力图 + 稳定性分析
 - **Priority**: MUST-RUN
 - **Estimated cost**: ~4-6 GPU-hours
 
@@ -85,13 +85,13 @@
 - **Why this block exists**: 拆解"因果干预是否必要"
 - **Dataset/split/task**: 同 B1 bridge-sensitive 子集
 - **Compared systems** (固定保护 expert 数量):
-  - (a) Bridge-score-gated protection
+  - (a) Bridge-score-gated protection（**按层** top-20% **\(B_z\)** 或与主方法一致的层内分位；全局绝对 B 阈值仅作附录）
   - (b) Routing-frequency-gated protection
   - (c) Activation-similarity-gated protection
   - (d) Random protection
   - (e) No protection (all merge)
 - **Metrics**: bridge-sensitive performance retention
-- **Setup details**: 固定总压缩率 50%，固定保护数量 = top-20% bridge score experts
+- **Setup details**: 固定总压缩率 50%，保护预算与主方法对齐（**按层分配**后与 (a) 的总保护 expert 数可比）
 - **Success criterion**: bridge-score > routing > activation > random，且差距 >= 1%
 - **Failure interpretation**: 若 routing-based 同等有效，需降低 "interventional" 的卖点
 - **Table/figure target**: Table 2: Protection Strategy Comparison
@@ -134,7 +134,7 @@
 
 | Milestone | Goal                                         | Runs           | Decision Gate                    | Cost | Risk       |
 | --------- | -------------------------------------------- | -------------- | -------------------------------- | ---- | ---------- |
-| M0        | Sanity: bridge score 可计算且稳定                  | B0             | rank correlation >= 0.8 否则停      | 4-6h | 定义不稳       |
+| M0        | Sanity: B0（Spearman + 层间 \(\bar{B}_l\) 结构）   | B0             | Spearman >= 0.8 且层间非退化，否则停   | 4-6h | 定义不稳       |
 | M1        | Baseline: 建立 HC-SMoE/MergeMoE 基线             | B1 (baselines) | 基线可复现                            | 4-6h | 工程问题       |
 | M2        | Main: 跑 admissibility-gated merge            | B1 (ours)      | bridge-sensitive gain >= 2% 否则审视 | 4-6h | idea 不成立   |
 | M3        | Novelty: 拆解 bridge score vs heuristics       | B3             | bridge-score 最优 否则降级叙事           | 6-8h | novelty 被吞 |
@@ -164,8 +164,10 @@
 
 - **Risk**: Bridge score 计算过程中 GPU OOM（三种条件 × 多层 hook 数据）
   - **Mitigation**: 减小 batch size、分层计算、及时清理 GPU 缓存；已确认基础推理可行
-- **Risk**: Bridge score 分布无差异
-  - **Mitigation**: 增加干预强度或使用不同 mismatch 策略
+- **Risk**: Bridge score 层内差异小、难以 per-expert 分群
+  - **Mitigation**: 采用 **layer-first** 门控 + **\(B_z\)** 仅在高 \(\sigma_l\) 层；论文叙事与 `run_experiment.md` 一致
+- **Risk**: 全局 B 多为负
+  - **Mitigation**: 不依赖全局 B>0；用层内排序、\(\bar{B}_l\) 分层与 \(\tau_{\mathrm{disp}}\)
 - **Risk**: 优势仅在特定 benchmark 上
   - **Mitigation**: 报告多个 benchmark，诚实讨论适用范围
 

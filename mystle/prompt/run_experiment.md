@@ -133,13 +133,43 @@ Bridge Score: B(e_i) = I_mismatch(e_i) - (I_visual(e_i) + I_text(e_i)) / 2
 Modality Affinity: M(e_i) = (I_text(e_i) - I_visual(e_i)) / (I_text(e_i) + I_visual(e_i) + ε)
 ```
 
-### Merge Admissibility Gate
+**说明**：B 可为正或负；叙事与门控应依赖**相对排序 / 层内标准化**，不要求全局 B>0（见下「实证」）。
+
+### 实证结论（DeepSeek-VL2-small，1000 条校准，`bridge_score_1000_full`）
+
+- **层间差异主导**：各 MoE 层上 **pooled B** 的层均值 \(\bar{B}_l\) 跨度大；**层内**跨 expert 的标准差 \(\sigma_l\) 在多数层较小，在少数层（如高 \(|\bar{B}_l|\) 或高 \(\sigma_l\) 的层）明显更大。
+- **推论**：原「仅按全局阈值 \(\tau_{\mathrm{bridge}}\) 区分每个 expert」与数据不符；应改为 **层优先（layer-first）**，仅在 **高离散层** 上保留 **专家级（expert-level）** 精细门控。
+
+### Layer-First + Expert-Refined Admissibility（默认实现目标）
+
+对每层 \(l\) 先算（由 `bridge_score_results.json` 的 `pooled_all` 可得）：
+
+- **层均值**：\(\bar{B}_l = \frac{1}{N}\sum_{e} B(e,l)\)
+- **层内离散度**：\(\sigma_l = \mathrm{std}_e B(e,l)\)
+- **层内 z 分数**（用于同层比较）：\(B_z(e,l) = \dfrac{B(e,l) - \bar{B}_l}{\sigma_l + \varepsilon}\)
+
+**(1) 层策略（merge 预算 / 保护强度）**
+
+- 用 \(\bar{B}_l\) 在所有 MoE 层上的**分位数**或 z-score 定义 **层敏感度** \(S_l\)（具体映射在 `admissibility_merge.py` 中用 argparse 固定一种，并在论文中报告）。
+- **高敏感度层**（例如 \(S_l\) 高于某分位）：**降低该层可合并 expert 比例**、或**提高该层冻结比例**；**低敏感度层**可接近基线 HC-SMoE 的合并强度。
+
+**(2) 专家策略（条件于 \(\sigma_l\)）**
+
+- 若 \(\sigma_l < \tau_{\mathrm{disp}}\)（层内几乎「一条横带」）：**不在该层做精细 per-expert bridge 排序**；合并仅在 **输出相似度**（或路由共现）下决定，门控主要由 **(1) 的层预算**约束。
+- 若 \(\sigma_l \geq \tau_{\mathrm{disp}}\)（层内 expert 差异大）：启用 **per-expert** 规则——用 **\(B_z(e,l)\)** 与 \(M(e,l)\) 定义可合并对与冻结集（见下）。
+
+**(3) 可合并对与冻结（高离散层用 \(B_z\)，避免全局绝对阈值）**
 
 ```
-A(e_i, e_j) = 1  iff  B(e_i) < τ_bridge AND B(e_j) < τ_bridge AND |M(e_i) - M(e_j)| < δ_affinity
-否则 A(e_i, e_j) = 0
-高 bridge experts (B > τ_bridge): frozen 不参与合并
+A(e_i, e_j) = 1  iff  同层 l 且 σ_l ≥ τ_disp
+              且  B_z(e_i,l) < τ_z 且 B_z(e_j,l) < τ_z
+              且  |M(e_i) - M(e_j)| < δ_affinity
+否则（或 σ_l < τ_disp 时由层预算 + 相似度聚类决定）按实现分支处理。
+
+高 bridge（相对同层）：B_z(e,l) > τ_z 的 expert → 该层内冻结或降低合并优先级（τ_z 取同层分位数，而非全局常数）。
 ```
+
+**超参**：\(\tau_{\mathrm{disp}}\)、\(\tau_z\)、\(\delta_{\mathrm{affinity}}\)、层敏感度分位与 **总压缩率** 一起在实现中可配置；小验证集上网格搜索或固定为论文主表一组 + 附录敏感性分析。
 
 ## 模型加载模板
 
@@ -208,14 +238,16 @@ vl_gpt = vl_gpt.cuda().eval()
 6. 跨 3 个校准子集的 stability 分析
 7. JSON 结果输出 + 分布可视化（matplotlib/seaborn），默认写入 `~/fsas/vlm/deepseek-vl2-bridge/results/`
 8. 内存管理（batch 处理，及时 `torch.cuda.empty_cache()`）
+9. **（供 Step 4）** 在 JSON 中已有每层 `pooled_all`；实现或脚本中导出 **层汇总表**（\(\bar{B}_l\)、\(\sigma_l\)、可选 \(\tau_{\mathrm{disp}}\) 标记）到同目录 `layer_bridge_summary.json`，供 `admissibility_merge.py` 读取
 
-### Step 4: 实现 HC-SMoE Baseline
+### Step 4: 实现 HC-SMoE Baseline + Admissibility-Gated Merge（Layer-First）
 
-创建 `mystle/experiments/baselines/hcsmoe_merge.py`：
+创建 `mystle/experiments/baselines/hcsmoe_merge.py`（及 `mystle/experiments/admissibility_merge.py`）：
 1. 基于 expert 输出相似度的层次聚类
 2. 按聚类结果合并 expert 权重（weighted average）
 3. 支持不同压缩率 (25%, 50%)
 4. 合并后的模型能正常推理
+5. **Ours**：读取 `bridge_score_results.json` + `layer_bridge_summary.json`，按上文 **Layer-First + Expert-Refined** 规则约束每层合并预算与高 \(\sigma_l\) 层上的 \(B_z\) 冻结集
 
 ### Step 5: 实现评测脚本
 
@@ -229,9 +261,9 @@ vl_gpt = vl_gpt.cuda().eval()
 
 按 EXPERIMENT_PLAN.md Block B0：
 1. 运行 bridge score 计算（在后台 `nohup` 或 `screen` 中运行）
-2. 检查 bridge score 分布
-3. 计算 rank correlation
-4. **Go/No-Go 判断**: rank correlation >= 0.8?
+2. 检查 **全局与层间** B 分布、\(\bar{B}_l\) 与 \(\sigma_l\)（热力图 + `layer_bridge_summary.json`）
+3. 计算跨子集 rank correlation（Spearman）
+4. **Go/No-Go**：子集 Spearman \(\geq 0.8\) **且** 层间 \(\bar{B}_l\) 分层可解释（非退化常数）；不要求「全局高 B expert 子集」或「全体 B>0」
 
 ### Step 7: 运行 Baseline + Main Experiments (B1)
 

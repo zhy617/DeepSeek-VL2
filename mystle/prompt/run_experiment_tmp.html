@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>run_experiment.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<p>请严格按下面的 pipeline 一次性执行所有步骤，不要中途停下询问我。
+如果需要写文件，直接在当前工作区创建。信息不足时做合理假设并继续。</p>
+<p>AUTO_PROCEED: true — 不要在任何 checkpoint 停下来等我确认，自动选择最优选项继续。</p>
+<hr>
+<h2 id="%E4%BD%A0%E7%9A%84%E8%A7%92%E8%89%B2">你的角色</h2>
+<p>你是我的&quot;实验执行代理&quot;。你的任务是：</p>
+<ol>
+<li>把 <code>mystle/refine-logs/EXPERIMENT_PLAN.md</code> 中的实验计划变成<strong>可运行的、完整的实验代码</strong></li>
+<li>直接在当前机器上运行实验</li>
+<li>监控实验进度，收集结果</li>
+<li>更新 <code>mystle/refine-logs/EXPERIMENT_TRACKER.md</code></li>
+</ol>
+<h2 id="%E7%8E%AF%E5%A2%83%E4%BF%A1%E6%81%AF%E5%B7%B2%E5%B0%B1%E7%BB%AA%E6%97%A0%E9%9C%80-ssh">环境信息（已就绪，无需 SSH）</h2>
+<p>当前已在算力平台上，环境已配置好：</p>
+<ul>
+<li><strong>工作目录</strong>: <code>/root/DeepSeek-VL2/</code></li>
+<li><strong>Python 虚拟环境</strong>: <code>.venv/</code>（激活命令: <code>source .venv/bin/activate</code>）</li>
+<li><strong>GPU</strong>: 1x RTX 4090 48GB VRAM</li>
+<li><strong>CPU</strong>: 7 核心，56 GB RAM</li>
+<li><strong>HF 镜像</strong>: hf-mirror.com（环境变量 <code>HF_ENDPOINT</code> 已设置）</li>
+<li><strong>pip 镜像</strong>: 清华源（已配置）</li>
+<li><strong>NumPy</strong>: 1.26.4（已降级，兼容 torchvision）</li>
+</ul>
+<h2 id="%E5%85%B1%E4%BA%AB%E5%AD%98%E5%82%A8-fsas%E6%95%B0%E6%8D%AE%E9%9B%86%E4%B8%8E%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C">共享存储 <code>~/fsas</code>（数据集与实验结果）</h2>
+<p>算力平台共享盘，<strong>关机不丢</strong>；数据集与实验产出放在此处，避免占满系统盘。</p>
+<p>实际顶层结构（<code>~/fsas</code> 下）：</p>
+<table>
+<thead>
+<tr>
+<th>目录</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>datasets/</code></td>
+<td>数据集：校准样本、评测集缓存、HuggingFace <code>datasets</code> 库缓存等</td>
+</tr>
+<tr>
+<td><code>models/</code></td>
+<td>模型权重缓存；<code>HF_HOME</code> 指向 <code>~/fsas/models/huggingface</code>（见 <code>mystle/README.md</code>）</td>
+</tr>
+<tr>
+<td><code>pip-cache/</code></td>
+<td>pip 缓存，勿写入实验数据</td>
+</tr>
+<tr>
+<td><code>vlm/</code></td>
+<td>多模态/VLM 相关实验产出：日志、JSON、图、中间检查点</td>
+</tr>
+</tbody>
+</table>
+<p><strong>本实验建议路径约定</strong>（在以上目录下建子目录，避免与其它任务混放）：</p>
+<pre class="hljs"><code><div>~/fsas/datasets/deepseek-vl2-bridge/
+├── calibration/          # 1000 条校准样本及预处理
+└── hf_datasets_cache/    # 可选：export HF_DATASETS_CACHE=... 指向此处
+
+~/fsas/vlm/deepseek-vl2-bridge/
+├── results/              # 各 run 的 JSON、图
+├── logs/                 # nohup / tee 日志
+└── model_info.json       # Step 1 结构探测（或放在 results/ 下）
+</div></code></pre>
+<p><strong>环境变量（在 shell 或脚本开头设置）</strong>：</p>
+<pre class="hljs"><code><div><span class="hljs-built_in">export</span> HF_HOME=<span class="hljs-string">"<span class="hljs-variable">${HF_HOME:-$HOME/fsas/models/huggingface}</span>"</span>
+<span class="hljs-built_in">export</span> HF_DATASETS_CACHE=<span class="hljs-string">"<span class="hljs-variable">${HF_DATASETS_CACHE:-$HOME/fsas/datasets/deepseek-vl2-bridge/hf_datasets_cache}</span>"</span>
+mkdir -p <span class="hljs-string">"<span class="hljs-variable">$HF_HOME</span>"</span> <span class="hljs-string">"<span class="hljs-variable">$HF_DATASETS_CACHE</span>"</span> <span class="hljs-string">"<span class="hljs-variable">$HOME</span>/fsas/datasets/deepseek-vl2-bridge/calibration"</span> \
+  <span class="hljs-string">"<span class="hljs-variable">$HOME</span>/fsas/vlm/deepseek-vl2-bridge/results"</span> <span class="hljs-string">"<span class="hljs-variable">$HOME</span>/fsas/vlm/deepseek-vl2-bridge/logs"</span>
+</div></code></pre>
+<p>代码仓库内仍只放 <strong><code>mystle/experiments/</code></strong> 源码；<strong>不要</strong>把大体积数据或结果提交进 git。</p>
+<h2 id="%E7%9B%AE%E6%A0%87%E6%A8%A1%E5%9E%8B%E5%B7%B2%E9%AA%8C%E8%AF%81%E5%8F%AF%E7%94%A8">目标模型（已验证可用）</h2>
+<p><strong>DeepSeek-VL2-small</strong> (<code>deepseek-ai/deepseek-vl2-small</code>)</p>
+<ul>
+<li>已验证可在当前环境加载和推理（见 <code>mystle/run/incre_pref_small.py</code>）</li>
+<li>加载方式: <code>torch_dtype=torch.bfloat16</code>，直接 <code>.cuda()</code></li>
+<li>支持 incremental prefilling（chunk_size=512）</li>
+</ul>
+<h2 id="%E6%A8%A1%E5%9E%8B-moe-%E6%9E%B6%E6%9E%84%E5%B7%B2%E7%A1%AE%E8%AE%A4">模型 MoE 架构（已确认）</h2>
+<p>MoE 实现在 <code>deepseek_vl2/models/modeling_deepseek.py</code>，关键结构：</p>
+<table>
+<thead>
+<tr>
+<th>类</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MoEGate</code></td>
+<td>线性门控，softmax/sigmoid 打分，支持 greedy/group_limited_greedy/noaux_tc top-k 策略</td>
+</tr>
+<tr>
+<td><code>DeepseekV2MoE</code></td>
+<td>MoEGate + ModuleList 的 <code>DeepseekV2MLP</code> 专家 + 可选 shared_experts</td>
+</tr>
+<tr>
+<td><code>DeepseekV2DecoderLayer</code></td>
+<td>当 <code>layer_idx &gt;= first_k_dense_replace</code> 且 <code>layer_idx % moe_layer_freq == 0</code> 时 mlp 为 MoE</td>
+</tr>
+</tbody>
+</table>
+<p>配置关键字段（<code>configuration_deepseek.py</code> → <code>DeepseekV2Config</code>）：</p>
+<ul>
+<li><code>n_routed_experts</code>: 路由专家数量</li>
+<li><code>num_experts_per_tok</code>: 每个 token 激活的专家数 (top-K)</li>
+<li><code>moe_layer_freq</code>: MoE 层频率</li>
+<li><code>first_k_dense_replace</code>: 前 k 层为 dense（不使用 MoE）</li>
+<li><code>moe_intermediate_size</code>: 专家 FFN 中间维度</li>
+</ul>
+<p>VL2 多模态模型（<code>modeling_deepseek_vl_v2.py</code>）使用 <code>DeepseekV2ForCausalLM</code> 作为语言塔，MoE 来自 decoder 层。</p>
+<h2 id="%E7%8E%B0%E6%9C%89%E4%BB%A3%E7%A0%81%E5%9F%BA%E7%A1%80">现有代码基础</h2>
+<pre class="hljs"><code><div>mystle/
+├── README.md
+├── prompt/
+│   └── run_experiment.md      ← 当前文件
+├── refine-logs/
+│   └── EXPERIMENT_PLAN.md     ← 实验计划（已有）
+└── run/
+    └── incre_pref_small.py    ← 已验证的模型加载+推理脚本
+</div></code></pre>
+<p>已有参考文档：</p>
+<ul>
+<li><code>mystle/refine-logs/FINAL_PROPOSAL.md</code> — 完整方法描述和 novelty 论证</li>
+<li><code>mystle/refine-logs/EXPERIMENT_PLAN.md</code> — 实验计划和 claim map</li>
+<li><code>mystle/refine-logs/EXPERIMENT_TRACKER.md</code> — 实验进度追踪表</li>
+<li><code>mystle/refine-logs/round-0-initial-proposal.md</code> — 初始提案（供参考）</li>
+</ul>
+<p>需要创建的目录和文件：</p>
+<ul>
+<li><code>mystle/experiments/</code> — 实验代码（bridge_score.py, admissibility_merge.py, evaluate.py, baselines/）</li>
+<li><code>~/fsas/datasets/deepseek-vl2-bridge/calibration/</code> — 校准数据（大文件，在共享盘）</li>
+<li><code>~/fsas/vlm/deepseek-vl2-bridge/</code> — 实验结果、日志（<code>results/</code>、<code>logs/</code> 子目录）</li>
+<li><code>mystle/refine-logs/EXPERIMENT_RESULTS.md</code> — 最终结果文字汇总（实验完成后创建，可引用 fsas 中的路径）</li>
+</ul>
+<h2 id="%E7%A0%94%E7%A9%B6%E6%96%B9%E6%B3%95%E6%A0%B8%E5%BF%83%E5%BF%85%E9%A1%BB%E7%B2%BE%E7%A1%AE%E5%AE%9E%E7%8E%B0">研究方法核心（必须精确实现）</h2>
+<h3 id="bridge-score-%E8%AE%A1%E7%AE%97">Bridge Score 计算</h3>
+<p>对每个 expert <code>e_i</code> 在每个 MoE 层 <code>l</code>，用校准数据计算：</p>
+<pre class="hljs"><code><div>I_visual(e_i) = E_x[||h_l(x) - h_l(x_visual_ablated)||]   when e_i is in top-K
+I_text(e_i)   = E_x[||h_l(x) - h_l(x_text_ablated)||]     when e_i is in top-K  
+I_mismatch(e_i) = E_x[||h_l(x) - h_l(x_mismatch)||]       when e_i is in top-K
+</div></code></pre>
+<ul>
+<li><code>x_visual_ablated</code>: 图像替换为全零/空白图像</li>
+<li><code>x_text_ablated</code>: 文本替换为无意义 padding</li>
+<li><code>x_mismatch</code>: 图像替换为同 batch 中另一条样本的图像（语义不匹配）</li>
+</ul>
+<pre class="hljs"><code><div>Bridge Score: B(e_i) = I_mismatch(e_i) - (I_visual(e_i) + I_text(e_i)) / 2
+Modality Affinity: M(e_i) = (I_text(e_i) - I_visual(e_i)) / (I_text(e_i) + I_visual(e_i) + ε)
+</div></code></pre>
+<h3 id="merge-admissibility-gate">Merge Admissibility Gate</h3>
+<pre class="hljs"><code><div>A(e_i, e_j) = 1  iff  B(e_i) &lt; τ_bridge AND B(e_j) &lt; τ_bridge AND |M(e_i) - M(e_j)| &lt; δ_affinity
+否则 A(e_i, e_j) = 0
+高 bridge experts (B &gt; τ_bridge): frozen 不参与合并
+</div></code></pre>
+<h2 id="%E6%A8%A1%E5%9E%8B%E5%8A%A0%E8%BD%BD%E6%A8%A1%E6%9D%BF">模型加载模板</h2>
+<p>基于已验证的加载方式：</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">import</span> torch
+<span class="hljs-keyword">from</span> transformers <span class="hljs-keyword">import</span> AutoModelForCausalLM
+<span class="hljs-keyword">from</span> deepseek_vl2.models <span class="hljs-keyword">import</span> DeepseekVLV2Processor, DeepseekVLV2ForCausalLM
+
+model_path = <span class="hljs-string">"deepseek-ai/deepseek-vl2-small"</span>
+vl_chat_processor = DeepseekVLV2Processor.from_pretrained(model_path)
+tokenizer = vl_chat_processor.tokenizer
+
+vl_gpt = AutoModelForCausalLM.from_pretrained(
+    model_path, trust_remote_code=<span class="hljs-literal">True</span>, torch_dtype=torch.bfloat16
+)
+vl_gpt = vl_gpt.cuda().eval()
+</div></code></pre>
+<h2 id="%E6%89%A7%E8%A1%8C%E6%AD%A5%E9%AA%A4%E4%B8%A5%E6%A0%BC%E6%8C%89%E9%A1%BA%E5%BA%8F">执行步骤（严格按顺序）</h2>
+<h3 id="step-0-%E7%8E%AF%E5%A2%83%E9%AA%8C%E8%AF%81">Step 0: 环境验证</h3>
+<ol>
+<li>激活虚拟环境: <code>source .venv/bin/activate</code></li>
+<li>检查 GPU 状态: <code>nvidia-smi</code></li>
+<li>验证依赖: <code>python -c &quot;import torch; print(torch.cuda.is_available(), torch.version.cuda)&quot;</code></li>
+<li>如果缺少依赖，安装:<pre class="hljs"><code><div>pip install scipy datasets matplotlib seaborn tqdm
+</div></code></pre>
+</li>
+<li>创建必要目录（含共享盘上的数据与结果路径，见上文「共享存储」）:<pre class="hljs"><code><div>mkdir -p mystle/experiments/baselines \
+  &quot;$HOME/fsas/datasets/deepseek-vl2-bridge/calibration&quot; \
+  &quot;$HOME/fsas/datasets/deepseek-vl2-bridge/hf_datasets_cache&quot; \
+  &quot;$HOME/fsas/vlm/deepseek-vl2-bridge/results&quot; \
+  &quot;$HOME/fsas/vlm/deepseek-vl2-bridge/logs&quot;
+</div></code></pre>
+</li>
+</ol>
+<h3 id="step-1-%E6%A8%A1%E5%9E%8B%E7%BB%93%E6%9E%84%E6%8E%A2%E6%B5%8B">Step 1: 模型结构探测</h3>
+<ol>
+<li>加载模型，打印所有 MoE 层信息</li>
+<li>记录每层的 expert 数量、top-K 设置、MoE 层索引</li>
+<li>确认能 hook 到 <code>DeepseekV2MoE</code> 层的 expert 输出</li>
+<li>保存到 <code>~/fsas/vlm/deepseek-vl2-bridge/results/model_info.json</code>（或同目录下带时间戳子文件夹）</li>
+</ol>
+<h3 id="step-2-%E6%A0%A1%E5%87%86%E6%95%B0%E6%8D%AE%E5%87%86%E5%A4%87">Step 2: 校准数据准备</h3>
+<ol>
+<li>从 HuggingFace datasets 下载 InfoVQA 或 LLaVA-Bench 样本</li>
+<li>构造 1000 条校准样本（含 image + text question + answer）</li>
+<li>对每条样本预生成 3 种干预版本：
+<ul>
+<li>original: 正常图文对</li>
+<li>visual_ablated: 图像替换为同尺寸空白/全零张量</li>
+<li>mismatch: 图像替换为另一条样本的图像</li>
+</ul>
+</li>
+<li>保存到 <code>~/fsas/datasets/deepseek-vl2-bridge/calibration/</code></li>
+</ol>
+<h3 id="step-3-%E5%AE%9E%E7%8E%B0-bridge-score-%E8%AE%A1%E7%AE%97">Step 3: 实现 Bridge Score 计算</h3>
+<p>创建 <code>mystle/experiments/bridge_score.py</code>，实现：</p>
+<ol>
+<li>模型加载（bf16，参照模板）</li>
+<li>MoE 层自动检测和 hook 注册（hook <code>DeepseekV2MoE</code> 的 forward）</li>
+<li>三种干预条件的 forward pass</li>
+<li>逐 expert 的 hidden state 差异计算</li>
+<li>Bridge score 和 modality affinity 计算</li>
+<li>跨 3 个校准子集的 stability 分析</li>
+<li>JSON 结果输出 + 分布可视化（matplotlib/seaborn），默认写入 <code>~/fsas/vlm/deepseek-vl2-bridge/results/</code></li>
+<li>内存管理（batch 处理，及时 <code>torch.cuda.empty_cache()</code>）</li>
+</ol>
+<h3 id="step-4-%E5%AE%9E%E7%8E%B0-hc-smoe-baseline">Step 4: 实现 HC-SMoE Baseline</h3>
+<p>创建 <code>mystle/experiments/baselines/hcsmoe_merge.py</code>：</p>
+<ol>
+<li>基于 expert 输出相似度的层次聚类</li>
+<li>按聚类结果合并 expert 权重（weighted average）</li>
+<li>支持不同压缩率 (25%, 50%)</li>
+<li>合并后的模型能正常推理</li>
+</ol>
+<h3 id="step-5-%E5%AE%9E%E7%8E%B0%E8%AF%84%E6%B5%8B%E8%84%9A%E6%9C%AC">Step 5: 实现评测脚本</h3>
+<p>创建 <code>mystle/experiments/evaluate.py</code>：</p>
+<ol>
+<li>支持 InfoVQA、OCRBench、MMMU、MMBench 的评测</li>
+<li>使用 lmms-eval 框架或手写评测逻辑</li>
+<li>输出 JSON 格式结果到 <code>~/fsas/vlm/deepseek-vl2-bridge/results/</code></li>
+<li>计算 accuracy / score retention (%)</li>
+</ol>
+<h3 id="step-6-%E8%BF%90%E8%A1%8C%E5%AE%9E%E9%AA%8C-block-b0--sanity-check">Step 6: 运行实验 (Block B0 — Sanity Check)</h3>
+<p>按 EXPERIMENT_PLAN.md Block B0：</p>
+<ol>
+<li>运行 bridge score 计算（在后台 <code>nohup</code> 或 <code>screen</code> 中运行）</li>
+<li>检查 bridge score 分布</li>
+<li>计算 rank correlation</li>
+<li><strong>Go/No-Go 判断</strong>: rank correlation &gt;= 0.8?</li>
+</ol>
+<h3 id="step-7-%E8%BF%90%E8%A1%8C-baseline--main-experiments-b1">Step 7: 运行 Baseline + Main Experiments (B1)</h3>
+<p>如果 B0 通过：</p>
+<ol>
+<li>运行 HC-SMoE baseline (25%, 50%)</li>
+<li>运行 MergeMoE baseline (25%, 50%)</li>
+<li>运行 admissibility-gated merge (25%, 50%, 3 seeds)</li>
+<li>评测所有配置</li>
+<li>更新 EXPERIMENT_TRACKER.md</li>
+</ol>
+<h3 id="step-8-%E8%BF%90%E8%A1%8C-novelty-isolation--router-independence-b3-b4">Step 8: 运行 Novelty Isolation + Router Independence (B3, B4)</h3>
+<ol>
+<li>B3: bridge-score vs routing-freq vs activation-sim vs random vs no-protection</li>
+<li>B4: naive merge + Router KD vs ours (no KD) vs ours + KD</li>
+<li>评测并记录结果</li>
+</ol>
+<h3 id="step-9-%E7%BB%93%E6%9E%9C%E6%94%B6%E9%9B%86%E4%B8%8E%E6%8A%A5%E5%91%8A">Step 9: 结果收集与报告</h3>
+<ol>
+<li>所有结果保存到 <code>~/fsas/vlm/deepseek-vl2-bridge/results/</code>（按 <code>run_id</code> 分子目录）</li>
+<li>生成结果汇总表</li>
+<li>更新 <code>mystle/refine-logs/EXPERIMENT_TRACKER.md</code> 状态</li>
+<li>写 <code>mystle/refine-logs/EXPERIMENT_RESULTS.md</code> 汇总报告</li>
+</ol>
+<h2 id="%E4%BB%A3%E7%A0%81%E8%B4%A8%E9%87%8F%E8%A6%81%E6%B1%82">代码质量要求</h2>
+<ul>
+<li>所有 hyperparameters 必须通过 argparse 可配置</li>
+<li>固定 random seed，默认 42</li>
+<li>结果保存为 JSON，每次运行带时间戳</li>
+<li>日志用 <code>tee</code> 同时输出到文件</li>
+<li>内存敏感：batch size 从小开始，遇 OOM 自动减半重试</li>
+<li>长时间任务用 <code>nohup</code> 在后台运行，输出重定向到日志文件</li>
+</ul>
+<h2 id="%E5%AE%9E%E9%AA%8C%E7%AE%A1%E7%90%86">实验管理</h2>
+<ul>
+<li>日志文件: <code>~/fsas/vlm/deepseek-vl2-bridge/logs/&lt;run_id&gt;.log</code></li>
+<li>结果文件: <code>~/fsas/vlm/deepseek-vl2-bridge/results/&lt;run_id&gt;/</code></li>
+<li>每个实验完成后立即更新 <code>mystle/refine-logs/EXPERIMENT_TRACKER.md</code>（Notes 中可写 fsas 路径）</li>
+</ul>
+<h2 id="%E9%81%87%E5%88%B0%E9%97%AE%E9%A2%98%E6%97%B6%E7%9A%84%E5%A4%84%E7%90%86">遇到问题时的处理</h2>
+<ul>
+<li><strong>OOM</strong>: 减小 batch size → 用量化 (int8/int4) → 减少校准样本数</li>
+<li><strong>模型下载慢</strong>: 确认用了 hf-mirror.com (<code>export HF_ENDPOINT=https://hf-mirror.com</code>)</li>
+<li><strong>MoE 结构不明</strong>: 参照上方架构表，或 <code>model.named_modules()</code> 定位</li>
+<li><strong>评测框架问题</strong>: 改用简单的直接推理 + 正则匹配评测</li>
+<li><strong>任何阻塞</strong>: 记录问题，跳过该步骤继续下一个，不要停下来问我</li>
+</ul>
+<h2 id="%E6%9C%80%E7%BB%88%E4%BA%A7%E5%87%BA">最终产出</h2>
+<p>在聊天末尾输出：</p>
+<ol>
+<li>已完成的实验列表（含状态）</li>
+<li>关键数字（如果已产出）</li>
+<li>遇到的问题和解决方案</li>
+<li>下一步建议</li>
+</ol>
+
+</body>
+</html>

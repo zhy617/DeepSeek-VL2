@@ -43,17 +43,17 @@ Pre-trained MoE-MLLM + Calibration Data (1k-2k multimodal pairs)
        ▼
 [Step 1] Bridge Score Computation (per expert, per layer)
        │  - 3 interventions: (a) original, (b) visual channel zeroed, (c) modality mismatch
-       │  - Compute interaction effect = output shift under mismatch - sum of unimodal shifts
-       │  - Bridge Score = normalized interaction effect
+       │  - B(e,l) = I_mismatch − (I_visual + I_text)/2（可为负；用于相对排序与层内标准化）
+       │  - 层统计：\bar{B}_l、σ_l = std_e B(e,l)；层内 z：B_z(e,l)
        ▼
-[Step 2] Admissibility Gate
-       │  - Continuous bridge score B(e_i) ∈ [0, 1]
-       │  - Modality affinity M(e_i) ∈ [-1, 1] (negative=visual, positive=language)
-       │  - Admissible pair: A(e_i, e_j) = 1 iff B(e_i) < τ AND B(e_j) < τ AND |M(e_i) - M(e_j)| < δ
-       │  - High-bridge experts (B > τ): frozen or merged at reduced ratio
+[Step 2] Layer-First + Expert-Refined Admissibility Gate
+       │  - 层策略：由 \bar{B}_l（或跨层分位）定每层 merge 预算 / 冻结强度
+       │  - 若 σ_l < τ_disp：该层主要靠层预算 + 相似度聚类，不强调 per-expert B
+       │  - 若 σ_l ≥ τ_disp：per-expert 门控，A(e_i,e_j) 用 B_z 与 M，|M_i−M_j|<δ
+       │  - 「高 bridge」：同层 B_z 高于分位 τ_z 的 expert 优先冻结（非全局常数 τ）
        ▼
 [Step 3] Constrained Merge
-       │  - Apply HC-SMoE (or any merge algorithm) only on admissible pairs per layer
+       │  - Apply HC-SMoE (or any merge algorithm) subject to layer budgets + 上述 admissible pairs
        ▼
 [Step 4] Compressed MoE-MLLM with preserved bridge structure
 ```
@@ -86,36 +86,41 @@ B(e_i) = I_mismatch(e_i) - (I_visual(e_i) + I_text(e_i)) / 2
 M(e_i) = (I_text(e_i) - I_visual(e_i)) / (I_text(e_i) + I_visual(e_i) + ε)
 ```
 
-### Admissibility Rule
+### Admissibility Rule（Layer-First + Expert-Refined）
+
+**动机（实证）**：在 DeepSeek-VL2-small 上，1000 条校准显示 **层间 \(\bar{B}_l\) 差异大、多数层内 \(\sigma_l\) 小、少数层 \(\sigma_l\) 大**。门控若仅用全局 \(\tau\) 区分每个 expert，与数据不符；故采用两层决策。
 
 ```
-Algorithm: Merge Admissibility Gate
+Algorithm: Layer-First Admissibility
 
-Input: Expert set E, Bridge scores {B(e_i)}, Modality affinities {M(e_i)}, 
-       thresholds τ_bridge, δ_affinity
-Output: Admissibility matrix A ∈ {0,1}^{|E|×|E|}
+Input:  {B(e,l), M(e,l)}，超参 τ_disp, τ_z, δ_affinity，及层敏感度映射（由 \bar{B}_l 到每层 merge 预算）
+Output: 每层可合并对与冻结集
 
-For each pair (e_i, e_j) in same layer:
-  If B(e_i) < τ_bridge AND B(e_j) < τ_bridge AND |M(e_i) - M(e_j)| < δ_affinity:
-    A(e_i, e_j) = 1  (admissible)
-  Else:
-    A(e_i, e_j) = 0  (inadmissible)
+1. 对每个 MoE 层 l：计算 \bar{B}_l、σ_l，及 B_z(e,l) = (B(e,l) − \bar{B}_l)/(σ_l + ε)。
 
-High-bridge experts (B > τ_bridge): frozen or merged with 2x conservative ratio
+2. 层策略：按 \bar{B}_l 的跨层分位（或其它可报告规则）设定该层最大可合并比例或最小冻结比例。
+
+3. 若 σ_l < τ_disp：该层在预算内按输出相似度/聚类合并；不按全局 B 阈值筛 expert。
+
+4. 若 σ_l ≥ τ_disp：对 (e_i, e_j) 同层，
+     A(e_i,e_j)=1 当且仅当 B_z(e_i,l)<τ_z 且 B_z(e_j,l)<τ_z 且 |M(e_i)−M(e_j)|<δ_affinity。
+   B_z(e,l) > τ_z 的 expert 归入高-bridge 冻结候选（τ_z 取同层分位，使总保护数与 baseline 可比）。
+
+5. 总压缩率固定时，各层预算与 (4) 中冻结集联合满足目标 expert 数。
 ```
 
 ### Practical Implementation
 
 - **Cost reduction**: 使用 routed-token zeroing 近似因果效应，而非完整 forward pass 差异。对于每个 expert，只需在其被 route 到的 token 上计算效应，复杂度 O(|calibration| × top-K) 而非 O(|calibration| × |experts|)
-- **Layer granularity**: 每层独立计算 bridge score；高层（接近输出）的 bridge score 权重更高
-- **Threshold selection**: 通过小量 validation set 上的 grid search 选择 τ_bridge 和 δ_affinity
+- **Layer granularity**: 每层独立计算 B；**合并约束以层预算为第一轴**，expert 级规则仅在高 \(\sigma_l\) 层启用
+- **Threshold selection**: 在验证集或校准集上网格搜索 \(\tau_{\mathrm{disp}}\)、\(\tau_z\)、\(\delta_{\mathrm{affinity}}\) 及层敏感度映射；报告敏感性分析
 
 ### Failure Modes and Diagnostics
 
-1. **Bridge score 不稳定** → 跨不同 calibration 子集测量 rank correlation；若 < 0.8 则增加样本量
-2. **B(e_i) 退化为 I_visual + I_text** → 检查 B 的分布：若无高 B 专家，说明模型可能无明确 bridge 结构
-3. **收益来自"少 merge"** → 控制合并总数，比较 bridge-gated vs random-gated vs frequency-gated
-4. **阈值敏感** → 报告 τ_bridge 在 [10th, 20th, 30th percentile] 下的稳定性
+1. **Bridge score 不稳定** → 跨不同 calibration 子集测量 Spearman；若 < 0.8 则增加样本量
+2. **全局 B 多为负或层内 \(\sigma_l\) 小** → **不**单独判失败；改用 \(\bar{B}_l\) 分层 + **\(B_z\)** 与 \(\tau_{\mathrm{disp}}\)；叙事强调层间结构而非「全局正 B」
+3. **收益来自"少 merge"** → 控制合并总数，比较 layer-first bridge-gated vs random-gated vs frequency-gated（同保护 expert 数）
+4. **阈值敏感** → 报告 \(\tau_z\)、\(\tau_{\mathrm{disp}}\) 与层分位映射在若干分位下的下游表现
 
 ### Novelty and Elegance Argument
 
