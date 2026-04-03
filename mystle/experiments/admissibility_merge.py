@@ -252,7 +252,8 @@ def main() -> None:
 
     if args.smoke_forward:
         B, T, H = 1, 4, cfg.hidden_size
-        dummy = torch.zeros(B, T, H, device=device, dtype=torch.bfloat16)
+        emb_w = lang.model.embed_tokens.weight
+        dummy = torch.zeros(B, T, H, device=device, dtype=emb_w.dtype)
         mask = torch.ones(B, T, device=device, dtype=torch.long)
         with torch.no_grad():
             _ = lang.model(inputs_embeds=dummy, attention_mask=mask, use_cache=False)
