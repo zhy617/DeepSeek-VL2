@@ -1,0 +1,17 @@
+{
+  "run_id": "step7_hcsmoe_0p50_mm",
+  "pretrained": "/root/fsas/vlm/deepseek-vl2-bridge/results/baselines/hcsmoe_keep_0p50/merged_model",
+  "tasks": [
+    "infovqa_val_lite",
+    "mmmu_val",
+    "ocrbench"
+  ],
+  "batch_size": 1,
+  "limit": null,
+  "seed": 42,
+  "model_type": "deepseek_vl2",
+  "framework": "lmms-eval",
+  "finished_at_utc": "2026-04-07T08:36:17.273246+00:00",
+  "results_json": "/root/DeepSeek-VL2/mystle/tmp-results/step7_hcsmoe_0p50_mm/lmms_eval_results.json",
+  "save_full": false
+}

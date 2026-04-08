@@ -12,7 +12,7 @@ from timm.layers import (
     AttentionPoolLatent, PatchDropout, resample_abs_pos_embed, LayerType
 )
 from timm.models._manipulate import named_apply, checkpoint_seq, adapt_input_conv
-from transformers.modeling_utils import is_flash_attn_2_available
+from transformers.utils import is_flash_attn_2_available
 from functools import partial
 
 

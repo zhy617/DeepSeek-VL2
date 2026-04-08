@@ -1,0 +1,39 @@
+{
+  "results": {
+    "infovqa_val_lite": {
+      "alias": "infovqa_val_lite",
+      "anls,none": 0.44764351589636936,
+      "anls_stderr,none": "N/A",
+      "anls_stderr_clt,none": 0.019603876679002763,
+      "anls_stderr_clustered,none": "N/A"
+    },
+    "mmmu_val": {
+      "alias": "mmmu_val",
+      "mmmu_acc,none": 0.31111,
+      "mmmu_acc_stderr,none": "N/A",
+      "mmmu_acc_stderr_clt,none": "N/A",
+      "mmmu_acc_stderr_clustered,none": "N/A",
+      "mmmu_acc_pass_at_k,none": [],
+      "mmmu_acc_pass_at_k_stderr,none": [],
+      "submission,none": [],
+      "submission_stderr,none": []
+    },
+    "ocrbench": {
+      "alias": "ocrbench",
+      "ocrbench_accuracy,none": 0.666,
+      "ocrbench_accuracy_stderr,none": "N/A",
+      "ocrbench_accuracy_stderr_clt,none": 0.014922019523732927,
+      "ocrbench_accuracy_stderr_clustered,none": "N/A"
+    }
+  },
+  "versions": {
+    "infovqa_val_lite": "Yaml",
+    "mmmu_val": 0.0,
+    "ocrbench": "Yaml"
+  },
+  "group_subtasks": {
+    "infovqa_val_lite": [],
+    "mmmu_val": [],
+    "ocrbench": []
+  }
+}

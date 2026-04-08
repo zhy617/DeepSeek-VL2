@@ -1,0 +1,18 @@
+######################### OCRBench #############################
+Text Recognition(Total 300): 229
+---------------- Details of Recognition Score ------------------
+Regular Text Recognition(Total 50): 44
+Irregular Text Recognition(Total 50): 41
+Artistic Text Recognition(Total 50): 45
+Handwriting Recognition(Total 50): 25
+Digit String Recognition(Total 50): 41
+Non-Semantic Text Recognition(Total 50): 33
+----------------------------------------------------------------
+Scene Text-centric VQA(Total 200): 156
+----------------------------------------------------------------
+Doc-oriented VQA(Total 200): 126
+----------------------------------------------------------------
+Key Information Extraction(Total 200): 135
+Handwritten Mathematical Expression Recognition(Total 100): 20
+--------------------- Final Score ------------------------------
+Final Score(Total 1000): 666

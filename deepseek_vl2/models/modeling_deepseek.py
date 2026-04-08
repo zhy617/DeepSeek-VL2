@@ -34,10 +34,15 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
-from transformers.models.llama.modeling_llama import (
-    LlamaAttention,
-    LlamaFlashAttention2
-)
+try:
+    from transformers.models.llama.modeling_llama import (
+        LlamaAttention,
+        LlamaFlashAttention2,
+    )
+except ImportError:
+    from transformers.models.llama.modeling_llama import LlamaAttention
+
+    LlamaFlashAttention2 = LlamaAttention
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -56,7 +61,11 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-from transformers.utils.import_utils import is_torch_fx_available
+try:
+    from transformers.utils.import_utils import is_torch_fx_available
+except ImportError:
+    def is_torch_fx_available():
+        return False
 
 from .configuration_deepseek import DeepseekV2Config
 

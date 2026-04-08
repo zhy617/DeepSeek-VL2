@@ -1,0 +1,15 @@
+{
+  "run_id": "mm_smoke_base_limit1",
+  "pretrained": "deepseek-ai/deepseek-vl2-small",
+  "tasks": [
+    "infovqa_val_lite"
+  ],
+  "batch_size": 1,
+  "limit": 1.0,
+  "seed": 42,
+  "model_type": "deepseek_vl2",
+  "framework": "lmms-eval",
+  "finished_at_utc": "2026-04-07T07:11:59.320387+00:00",
+  "results_json": "/root/DeepSeek-VL2/mystle/tmp-results/mm_smoke_base_limit1/lmms_eval_results.json",
+  "save_full": false
+}
