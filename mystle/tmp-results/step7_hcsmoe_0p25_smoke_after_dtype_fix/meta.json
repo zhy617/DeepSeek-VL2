@@ -1,0 +1,15 @@
+{
+  "run_id": "step7_hcsmoe_0p25_smoke_after_dtype_fix",
+  "pretrained": "/root/fsas/vlm/deepseek-vl2-bridge/results/baselines/hcsmoe_keep_0p25/merged_model",
+  "tasks": [
+    "infovqa_val_lite"
+  ],
+  "batch_size": 1,
+  "limit": 1.0,
+  "seed": 42,
+  "model_type": "deepseek_vl2",
+  "framework": "lmms-eval",
+  "finished_at_utc": "2026-04-08T07:25:42.242336+00:00",
+  "results_json": "/root/DeepSeek-VL2/mystle/tmp-results/step7_hcsmoe_0p25_smoke_after_dtype_fix/lmms_eval_results.json",
+  "save_full": false
+}

@@ -240,3 +240,114 @@
   - `admissibility_keep_0p25_seed7` / `seed123` 的 `meta/merge_plan`
   - 所有配置的 `retention.json`
   - `EXPERIMENT_TRACKER.md` 最终同步
+
+## 9. 换卡后恢复执行记录（追加）
+
+按照第 8 节暂停点，我已在更换 GPU 后继续恢复 Step 7，并先做了环境排查与最小修复。
+
+### 9.1 新环境上的阻塞与修复
+
+恢复时首先发现：
+
+- `nvidia-smi` 正常，GPU 空闲
+- 但 `.venv` 内实际生效的是 `torch 2.11.0+cu130`
+- 该构建要求 CUDA 13，而当前机器驱动暴露的是 `CUDA 12.8`
+- 因此最初 `torch.cuda.is_available()` 返回 `False`
+
+为恢复 GPU 可用性，本次执行了：
+
+- 将 PyTorch 栈切换为 `torch 2.11.0+cu128`
+- 同时安装匹配的 `torchvision 0.26.0+cu128`、`torchaudio 2.11.0+cu128`
+
+修复后已重新确认：
+
+- `torch.__version__ == 2.11.0+cu128`
+- `torch.version.cuda == 12.8`
+- `torch.cuda.is_available() == True`
+- 设备可见：`NVIDIA GeForce RTX 4090`
+
+### 9.2 xFormers 失配与代码补丁
+
+GPU 恢复后，重新跑多模态 smoke test 时又遇到第二个阻塞：
+
+- 视觉塔 `deepseek_vl2/models/siglip_vit.py` 在 `qk_norm=False` 路径下直接调用
+  `xformers.ops.memory_efficient_attention`
+- 当前 `xformers 0.0.22` 是为旧的 `torch 2.0.1+cu118` 构建的
+- 在新环境下其 CUDA 扩展不可用，导致前向时报：
+  `NotImplementedError: No operator found for memory_efficient_attention_forward`
+
+因此我对 `deepseek_vl2/models/siglip_vit.py` 增加了最小兼容补丁：
+
+- 保留原有 `xformers` 快路径
+- 当 `xformers` 不可用或算子不可调度时，自动回退到
+  `torch.nn.functional.scaled_dot_product_attention`
+
+该补丁的目的只是保证 Step 7 评测在当前换卡环境下继续可跑，不改变上层实验逻辑。
+
+### 9.3 恢复后的验证
+
+修复后已完成新的 GPU smoke test：
+
+- run id: `step7_resume_smoke_gpu2`
+- 任务：`infovqa_val_lite`
+- 配置：`limit=1`, `batch_size=1`
+- 结果文件：
+  - `~/fsas/vlm/deepseek-vl2-bridge/results/step7_resume_smoke_gpu2/lmms_eval_results.json`
+
+该 smoke test 已成功跑通，说明：
+
+- `lmms-eval` 路径可用
+- DeepSeek-VL2 多模态前向在当前机器上已恢复
+- `xformers` 失配不再阻塞正式评测
+
+### 9.4 已补齐的 0.25 多 seed 产物
+
+恢复执行后，已补齐：
+
+- `~/fsas/vlm/deepseek-vl2-bridge/results/baselines/admissibility_keep_0p25_seed7`
+- `~/fsas/vlm/deepseek-vl2-bridge/results/baselines/admissibility_keep_0p25_seed123`
+
+两者当前均已写出：
+
+- `meta.json`
+- `merge_plan.json`
+
+补充观察：
+
+- 这两个 `0.25` 额外 seed 与主 seed 一样，都触发了
+  `clustering_fallback = unconstrained_cosine`
+- 因此 `0.25` 设置下的 admissibility 约束在当前实现中同样较易退化到
+  HC-SMoE 风格的无约束聚类回退
+
+### 9.5 当前正在运行的任务
+
+我已重新启动基座多模态全量正式评测：
+
+- run id: `step5_base_mm_full`
+- 命令入口：`python mystle/experiments/evaluate.py mm --run-id step5_base_mm_full --batch-size 1`
+- 输出目录：
+  - `~/fsas/vlm/deepseek-vl2-bridge/results/step5_base_mm_full/`
+
+当前状态：
+
+- 模型已完成加载
+- 数据集预处理已完成
+- 正在执行正式多模态推理
+- 监控日志显示已进入稳定推进阶段（`DeepSeek-VL2: <n>/2400`）
+
+### 9.6 已排队的后续自动续跑
+
+为避免再次在基座结果完成后手动接力，我还额外挂起了一条串行等待链：
+
+1. 等待 `step5_base_mm_full/lmms_eval_results.json` 生成
+2. 自动运行：
+   - `step7_hcsmoe_0p25_mm`
+   - `step7_mergemoe_0p25_mm`
+   - `step7_admissibility_0p25_mm`
+3. 自动为现有 `50%` 三组结果补离线 `retention.json`
+   - `step7_hcsmoe_0p50_mm`
+   - `step7_mergemoe_0p50_mm`
+   - `step7_admissibility_0p50_mm`
+
+因此，只要 `step5_base_mm_full` 正常完成，Step 7 后续剩余的正式评测与 retention
+将继续**串行自动推进**，无需再次手工启动。

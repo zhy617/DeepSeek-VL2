@@ -1,0 +1,31 @@
+{
+  "baseline_json": "/root/fsas/vlm/deepseek-vl2-bridge/results/step5_base_mm_full/lmms_eval_results.json",
+  "current_json": "/root/DeepSeek-VL2/mystle/tmp-results/step7_hcsmoe_0p50_mm/lmms_eval_results.json",
+  "computed_at_utc": "2026-04-08T08:41:38.011552+00:00",
+  "per_task": [
+    {
+      "task": "infovqa_val_lite",
+      "metric_key": "anls,none",
+      "baseline": 0.5789509799506878,
+      "current": 0.4675836911477642,
+      "retention_pct": 80.76395193036736,
+      "note": "ok"
+    },
+    {
+      "task": "mmmu_val",
+      "metric_key": "mmmu_acc,none",
+      "baseline": 0.46,
+      "current": 0.28222,
+      "retention_pct": 61.35217391304348,
+      "note": "ok"
+    },
+    {
+      "task": "ocrbench",
+      "metric_key": "ocrbench_accuracy,none",
+      "baseline": 0.813,
+      "current": 0.631,
+      "retention_pct": 77.61377613776139,
+      "note": "ok"
+    }
+  ]
+}

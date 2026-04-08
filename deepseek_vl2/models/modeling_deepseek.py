@@ -395,7 +395,13 @@ class DeepseekV2MLP(nn.Module):
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
+        input_dtype = x.dtype
+        weight_dtype = self.gate_proj.weight.dtype
+        if x.dtype != weight_dtype:
+            x = x.to(weight_dtype)
         down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        if down_proj.dtype != input_dtype:
+            down_proj = down_proj.to(input_dtype)
         return down_proj
 
 
