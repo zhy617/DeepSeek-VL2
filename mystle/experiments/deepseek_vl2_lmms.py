@@ -149,16 +149,43 @@ class DeepseekVL2LMMS(lmms):
         cls = DeepseekVLV2ForCausalLM
         orig, wrapped = _strip_none_hf_extras(cls)
         cls.from_pretrained = wrapped  # type: ignore[method-assign]
+
+        # Estimate model size from safetensors to decide GPU vs CPU+GPU loading
+        _st_size = sum(
+            f.stat().st_size for f in Path(pretrained).glob("*.safetensors")
+        ) if Path(pretrained).is_dir() else 0
+        _gpu_mem = 0
+        if torch.cuda.is_available():
+            _gpu_mem = torch.cuda.get_device_properties(0).total_memory
+        _use_offload = _st_size > 0 and _st_size > _gpu_mem * 0.92
+
         try:
-            self._model = AutoModelForCausalLM.from_pretrained(
-                pretrained,
-                trust_remote_code=trust_remote_code,
-                torch_dtype=dt,
-            )
+            if _use_offload:
+                eval_logger.info(
+                    f"Model safetensors {_st_size/1e9:.1f}GB > GPU {_gpu_mem/1e9:.1f}GB*0.92, using device_map=auto"
+                )
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    pretrained,
+                    trust_remote_code=trust_remote_code,
+                    torch_dtype=dt,
+                    device_map="auto",
+                    max_memory={0: int(_gpu_mem*0.90), "cpu": "40GiB"},
+                    low_cpu_mem_usage=True,
+                )
+            else:
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    pretrained,
+                    trust_remote_code=trust_remote_code,
+                    torch_dtype=dt,
+                )
         finally:
             cls.from_pretrained = orig  # type: ignore[method-assign]
 
-        self._model = self._model.to(self._device).eval()
+        if _use_offload:
+            self._model.eval()
+            self._device = next(self._model.parameters()).device
+        else:
+            self._model = self._model.to(self._device).eval()
         _patch_top_config(self._model)
 
         self.processor = DeepseekVLV2Processor.from_pretrained(pretrained)
