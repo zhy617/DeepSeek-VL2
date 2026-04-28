@@ -129,6 +129,21 @@ class DeepseekVLV2Processor(ProcessorMixin):
     tokenizer_class = ("LlamaTokenizer", "LlamaTokenizerFast")
     attributes = ["tokenizer"]
 
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        import os, json
+        if os.path.isdir(pretrained_model_name_or_path):
+            config_path = os.path.join(pretrained_model_name_or_path, "preprocessor_config.json")
+            if os.path.isfile(config_path):
+                with open(config_path, "r") as f:
+                    processor_dict = json.load(f)
+                processor_dict.pop("processor_class", None)
+                processor_dict.pop("auto_map", None)
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+                return cls(tokenizer, **processor_dict)
+        return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
+
     def __init__(
             self,
             tokenizer: LlamaTokenizerFast,
